@@ -1,26 +1,6 @@
-Precedence:
-";" > "|" > ("&&", "||") > command
-
-Grammer:
-
-<command_line> ::= <sequence>
-
-<sequence> ::= <pipeline_seq> (';' <pipeline_seq>)*
-
-<pipeline_seq> ::= <logic_seq> ('|' <logic_seq>)*
-
-<logic_seq> ::= <simple_command> (("&&" | "||" ) <simple_command>)*
-
-<simple_command> ::= <word_cmd> <word_arg>* <redirect>*
-
-<word_cmd> ::= <string>
-<word_arg> ::= <string> | <quoted_string>
-
-//no Precedence
-
-<cmd_line> ::= <cmd> (<symbol>)*
-<symbol> ::= <pipes> | <logic> | <sequence>
+<cmd_line> ::= <cmd> (<connector>)*
 <cmd> ::= <sim_cmd> (<args> <redirect>?)*
+<connector> ::= <pipes> | <logic> | <sequence>
 <pipes> ::= "|" <cmd>
 <logic> ::= ("&&"|"||") <cmd>
 <sequence> ::= ";" <cmd>
