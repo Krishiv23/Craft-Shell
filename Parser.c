@@ -66,66 +66,57 @@ typedef struct AST_node{
     } nodes;
 } AST_node;
 
-AST_node* create_node_command(char* cmd){
-    AST_node* node=malloc(sizeof(AST_node));
-    if(!node) return NULL;
+void create_node_command(AST_node** node, char* cmd){
+    if(!node) return;
     
-    node->type=TOK_CMD;
-    node->nodes.command.cmd = strdup(cmd);
-    node->nodes.command.args=NULL;
-    node->nodes.command.redirect=NULL;
-
-    return node;
+    (*node)->type=TOK_CMD;
+    (*node)->nodes.command.cmd = strdup(cmd);
+    (*node)->nodes.command.args=NULL;
+    (*node)->nodes.command.redirect=NULL;
 }
 
-AST_node* create_node_argument(char* arg){
-    AST_node* node=malloc(sizeof(AST_node));
-    if(!node) return NULL;
+void create_node_argument(AST_node** node, char* arg){
+    if(!node) return;
     
-    node->type=TOK_ARG;
-    node->nodes.argument.arg=strdup(arg);
-    node->nodes.argument.nxt=NULL;
-
-    return node;
+    (*node)->type=TOK_ARG;
+    (*node)->nodes.argument.arg=strdup(arg);
+    (*node)->nodes.argument.nxt=NULL;
 }
 
-AST_node* create_node_connector(char* operator, int type, AST_node* left, AST_node* right){
-    AST_node* node=malloc(sizeof(AST_node));
+AST_node* create_node_connector(char** operator, int type, AST_node* left, AST_node* right){
+    AST_node* node = malloc(sizeof(AST_node));
     if(!node) return NULL;
 
     node->type = type;
-    node->nodes.connector.op=strdup(operator);
+    node->nodes.connector.op=strdup(*operator);
     node->nodes.connector.left=left;
     node->nodes.connector.right=right;
 
     return node;
 }
 
-AST_node* create_node_redirect(char* connector, char* destination){
-    AST_node* node=malloc(sizeof(AST_node));
-    if(!node)
-        return NULL;
+void create_node_redirect(AST_node** node, char* op, char* destination){
+    if(!node) return;
 
-    node->type=TOK_REDIR;
-    node->nodes.redirect.type=strdup(connector);
-    node->nodes.redirect.destination=strdup(destination);
-
-    return node;
+    (*node)->type=TOK_REDIR;
+    (*node)->nodes.redirect.type=strdup(op);
+    (*node)->nodes.redirect.destination=strdup(destination);
 }
 
 //function prototype
 char* read_input();
 int rm_space(char* input);
-char** get_token(char* input, char** tokens);
+char** get_token(char* input, char*** tokens);
 bool is_connector(char* type);
 bool is_redirect(char* type);
-AST_node* parse_redirect(char** tokens);
-AST_node* parse_cmd_line(char** tokens);
-AST_node* parse_connector(AST_node* left, char** tokens);
-AST_node* parse_sim_cmd(char** tokens);
-AST_node* parse_cmd(char** tokens);
-AST_node* parse_arg(char** tokens);
+AST_node* parse_redirect(char*** tokens);
+AST_node* parse_cmd_line(char*** tokens);
+AST_node* parse_connector(AST_node* left, char*** tokens);
+AST_node* parse_sim_cmd(char*** tokens);
+AST_node* parse_cmd(char*** tokens);
+AST_node* parse_arg(char*** tokens);
 void print_ast(AST_node* ast);
+void free_ast(AST_node* ast);
 
 int main(int argc, char** argv)
 {
@@ -138,14 +129,15 @@ int main(int argc, char** argv)
     }
 
     char** tokens=calloc(MAX_TOKEN, sizeof(char*));
-    tokens = get_token(input, tokens);
+    tokens = get_token(input, &tokens);
     if(token_count==0){
         free(input);
         continue;
     }
 
-    AST_node* ast=parse_cmd_line(tokens);
+    AST_node* ast=parse_cmd_line(&tokens);
     print_ast(ast);
+    free_ast(ast);
 
     free(input);
     for(int i=0; i<token_count; i++){
@@ -204,7 +196,7 @@ int rm_space(char* input)
     return pos;
 }
 
-char** get_token(char* input, char** tokens)
+char** get_token(char* input, char*** tokens)
 {
     int i=rm_space(input);
     int j;
@@ -249,13 +241,13 @@ char** get_token(char* input, char** tokens)
         }
         
         if(token != NULL){
-            tokens[token_count] = strdup(token);
+            (*tokens)[token_count] = strdup(token);
         }
         token_count++;
 
         free(token);
     }
-    return tokens;
+    return (*tokens);
 }
 
 bool is_connector(char* type){
@@ -275,32 +267,88 @@ bool is_redirect(char* type){
     return false;
 }
 
-AST_node* parse_cmd_line(char** tokens){
-    AST_node* left = parse_cmd(tokens);
+AST_node* parse_cmd_line(char*** tokens){
+    AST_node* left = parse_cmd(&(*tokens));
     if(!left)
         return NULL;
 
-    return parse_connector(left, tokens);
+    return parse_connector(left, &(*tokens));
 }
 
-AST_node* parse_cmd(char** tokens){
-    AST_node* cmd = parse_sim_cmd(tokens);
+AST_node* parse_cmd(char*** tokens){
+    AST_node* cmd = parse_sim_cmd(&(*tokens));
     if(!cmd){
         return NULL;
     }
 
-    cmd->nodes.command.args=parse_arg(tokens);
+    cmd->nodes.command.args=parse_arg(&(*tokens));
 
-    if(current_token<token_count && is_redirect(tokens[current_token])){
-        cmd->nodes.command.redirect=parse_redirect(tokens);
+    if(current_token<token_count && is_redirect((*tokens)[current_token])){
+        cmd->nodes.command.redirect=parse_redirect(&(*tokens));
     }
 
     return cmd;
 }
 
-AST_node* parse_connector(AST_node* left, char** tokens){
-    while(current_token<token_count && is_connector(tokens[current_token])){
-        char* op=tokens[current_token];
+AST_node* parse_sim_cmd(char*** tokens){
+    if(current_token>=token_count){
+        return NULL;
+    }
+
+    if(is_connector((*tokens)[current_token]) || is_redirect((*tokens)[current_token])){
+        return NULL;
+    }
+
+    AST_node* cmd=malloc(sizeof(AST_node));
+    create_node_command(&cmd, (*tokens)[current_token]);
+    current_token++;
+
+    return cmd;
+}
+
+AST_node* parse_arg(char*** tokens){
+    if(current_token>=token_count){
+        return NULL;
+    }
+
+    if(is_connector((*tokens)[current_token]) || is_redirect((*tokens)[current_token])){
+        return NULL;
+    }
+
+    AST_node* arg=malloc(sizeof(AST_node));
+    create_node_argument(&arg, (*tokens)[current_token]);
+    current_token++;
+    arg->nodes.argument.nxt=parse_arg(&(*tokens));
+
+    return arg;
+}
+
+AST_node* parse_redirect(char*** tokens){
+    if(current_token>=token_count || !is_redirect((*tokens)[current_token])){
+        return NULL;
+    }
+
+    char* redirect_type=strdup((*tokens)[current_token]);
+    current_token++;
+
+    if(current_token>=token_count){
+        perror("Syntax Error: Expected destination\n");
+        return NULL;
+    }
+    char* destin=strdup((*tokens)[current_token]);
+    current_token++;
+
+    AST_node* redir=malloc(sizeof(AST_node));
+    create_node_redirect(&redir, redirect_type, destin);
+
+    free(redirect_type);
+    free(destin);
+    return redir;
+}
+
+AST_node* parse_connector(AST_node* left, char*** tokens){
+    while(current_token<token_count && is_connector((*tokens)[current_token])){
+        char* op=strdup((*tokens)[current_token]);
         if(op!=NULL) current_token++;
 
         int type;
@@ -312,68 +360,16 @@ AST_node* parse_connector(AST_node* left, char** tokens){
             type=TOK_LOGIC;
         }
 
-        AST_node* right=parse_cmd(tokens);
+        AST_node* right=parse_cmd(&(*tokens));
         if(!right){
             return NULL;
         }
 
-        left = create_node_connector(op, type,left, right);
+        left = create_node_connector(&op, type, left, right);
+        free(op);
     }
 
     return left;
-}
-
-AST_node* parse_sim_cmd(char** tokens){
-    if(current_token>=token_count){
-        return NULL;
-    }
-
-    if(is_connector(tokens[current_token]) || is_redirect(tokens[current_token])){
-        return NULL;
-    }
-
-    AST_node* cmd=create_node_command(tokens[current_token]);
-    current_token++;
-
-    return cmd;
-}
-
-AST_node* parse_arg(char** tokens){
-    if(current_token>=token_count){
-        return NULL;
-    }
-
-    if(is_connector(tokens[current_token]) || is_redirect(tokens[current_token])){
-        return NULL;
-    }
-
-    AST_node* arg=create_node_argument(tokens[current_token]);
-    current_token++;
-    arg->nodes.argument.nxt=parse_arg(tokens);
-
-    return arg;
-}
-
-AST_node* parse_redirect(char** tokens){
-    if(current_token>=token_count || !is_redirect(tokens[current_token])){
-        return NULL;
-    }
-
-    char* redirect_type=strdup(tokens[current_token]);
-    current_token++;
-
-    if(current_token>=token_count){
-        perror("Syntax Error: Expected destination\n");
-        return NULL;
-    }
-    char* destin=strdup(tokens[current_token]);
-    current_token++;
-
-    AST_node* redir=create_node_redirect(redirect_type, destin);
-
-    free(redirect_type);
-    free(destin);
-    return redir;
 }
 
 void print_ast(AST_node* ast){
@@ -381,34 +377,25 @@ void print_ast(AST_node* ast){
 
     switch(ast->type){
         case TOK_CMD:
-            if(ast->nodes.command.cmd)
-            printf("%s\n", ast->nodes.command.cmd);
+            if(ast->nodes.command.cmd) printf("%s\n", ast->nodes.command.cmd);
 
-            if(ast->nodes.command.args){
-                print_ast(ast->nodes.command.args);
-            }
+            if(ast->nodes.command.args) print_ast(ast->nodes.command.args);
 
-            if(ast->nodes.command.redirect){
-                print_ast(ast->nodes.command.redirect);
-            }
+            if(ast->nodes.command.redirect) print_ast(ast->nodes.command.redirect);
         
             break;
 
         case TOK_ARG:
-            if(ast->nodes.argument.arg)
-            printf("%s\n", ast->nodes.argument.arg);
+            if(ast->nodes.argument.arg) printf("%s\n", ast->nodes.argument.arg);
 
-            if(ast->nodes.argument.nxt)
-            print_ast(ast->nodes.argument.nxt);
+            if(ast->nodes.argument.nxt) print_ast(ast->nodes.argument.nxt);
 
             break;
         
         case TOK_REDIR:
-            if(ast->nodes.redirect.type)
-            printf("%s\n", ast->nodes.redirect.type);
+            if(ast->nodes.redirect.type) printf("%s\n", ast->nodes.redirect.type);
             
-            if(ast->nodes.redirect.destination)
-            printf("%s\n", ast->nodes.redirect.destination);
+            if(ast->nodes.redirect.destination) printf("%s\n", ast->nodes.redirect.destination);
 
             break;
         
@@ -440,4 +427,47 @@ void print_ast(AST_node* ast){
             perror("Unknown command\n");
             break;
     }
+}
+
+void free_ast(AST_node* ast){
+    if(!ast) return;
+
+    switch(ast->type){
+        case TOK_CMD:
+            if(ast->nodes.command.cmd) free(ast->nodes.command.cmd);
+
+            if(ast->nodes.command.args) free_ast(ast->nodes.command.args);
+
+            if(ast->nodes.command.redirect) free_ast(ast->nodes.command.redirect);
+        
+            break;
+
+        case TOK_ARG:
+            if(ast->nodes.argument.arg) free(ast->nodes.argument.arg);
+
+            if(ast->nodes.argument.nxt) free_ast(ast->nodes.argument.nxt);
+
+            break;
+        
+        case TOK_REDIR:
+            if(ast->nodes.redirect.type) free(ast->nodes.redirect.type);
+            
+            if(ast->nodes.redirect.destination) free(ast->nodes.redirect.destination);
+
+            break;
+        
+        case TOK_LOGIC:
+        case TOK_PIPE:
+        case TOK_SEQ:
+            if(ast->nodes.connector.op) free(ast->nodes.connector.op);
+
+            if(ast->nodes.connector.left) free_ast(ast->nodes.connector.left);
+
+            if(ast->nodes.connector.right) free_ast(ast->nodes.connector.right);
+
+            break;
+        default:
+            break;
+    }
+    free(ast);
 }
