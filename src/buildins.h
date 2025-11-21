@@ -10,5 +10,6 @@ typedef struct cmd_func{
 
 extern cmd_func cmd_func_arr[];
 extern int total_buildins;
+extern int exit_stat;
 
 #endif //BUILDINS_H
