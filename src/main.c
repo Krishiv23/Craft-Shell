@@ -1,10 +1,11 @@
+#include <ctype.h>
+#include <errno.h>
+#include <linux/limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <ctype.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <errno.h>
 #include "buildins.h"
 #include "prompt.h"
 
@@ -19,7 +20,7 @@ int current_token=0;
 void prompt(){
     char* username=getlogin();
     char hostname[1024];
-    char path[1024];
+    char path[PATH_MAX];
 
     gethostname(hostname, sizeof(hostname));
     getcwd(path, sizeof(path));
@@ -141,9 +142,10 @@ int main(int argc, char** argv)
 
     AST_node* ast=parse_cmd_line(&tokens);
     int stat = execute_ast(ast);
-    if(stat==0) printf("Command executed succesfully");
+    if(stat==0) printf("Command executed succesfully\n");
     //print_ast(ast);
 
+    exit_stat=stat;
     free_ast(ast);
     free(input);
     for(int i=0; i<token_count; i++){
@@ -421,7 +423,7 @@ int execute_ast(AST_node* ast){
         cmd_arr[i]=NULL;
 
         if(exec_cmd(i, &cmd_arr)>0){
-            perror("Command execution failed\n");
+            fprintf(stderr, "%s\n", "Command execution failed");
             for(int k=0; k<i; k++) free(cmd_arr[k]);
             free(cmd_arr);
             return 1;
@@ -430,8 +432,8 @@ int execute_ast(AST_node* ast){
         for(int k=0; k<i; k++) free(cmd_arr[k]);
         free(cmd_arr);
     }else{
-        perror("Unknown Command\n");
-        return 127;
+        fprintf(stderr, "%s\n", "Unknown Command");
+        return 1;
     }
 
     return 0;
