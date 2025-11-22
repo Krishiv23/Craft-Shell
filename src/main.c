@@ -124,8 +124,7 @@ void free_ast(AST_node* ast);
 
 int main(int argc, char** argv)
 {
-    int n=2;
-    while(n--){
+    while(1){
     prompt();
     char* input = read_input();
     if(!input){
@@ -195,11 +194,12 @@ char* read_input(){
     return cmd;
 }
 
-int rm_space(char* input)
-{
+int rm_space(char* input){
     int pos=0;
-    while(input[pos]==' '){
+    char* ptr=input;
+    while(*(ptr)!='\0' && *(ptr) == ' '){
         pos++;
+        ptr++;
     }
     return pos;
 }
@@ -210,12 +210,16 @@ void get_token(char* input, char*** tokens)
     int j;
     char quote_char;
 
-    while(input[i]){
+    while(input[i]!='\0'){
         j=0;
         char* token=malloc(256);
 
-        while(input[i]==' ' && input[i]){
+        while(input[i]!='\0' && input[i]==' '){
             i++;
+        }
+        if(input[i]=='\0'){
+            free(token);
+            break;
         }
         
         if(input[i]=='"' || input[i]=='\''){
@@ -229,7 +233,7 @@ void get_token(char* input, char*** tokens)
             token[j]='\0';
         }
         else if( strchr("><|;&", input[i])!=NULL ){
-            if(input[i+1] && input[i]==input[i+1] && (input[i]=='|' || input[i]=='&' || input[i]=='>'))
+            if(input[i+1]!='\0' && input[i]==input[i+1] && (input[i]=='|' || input[i]=='&' || input[i]=='>'))
             {
                 token[j++]=input[i++];
                 token[j++]=input[i++];
@@ -397,10 +401,11 @@ int execute_ast(AST_node* ast){
 
         while(temp){
             char* arg = temp->nodes.argument.arg;
-            if(arg[0] == '-'){
+            if(*arg == '-'){
                 arg++;
                 while((*arg)!='\0'){
                     flag[j++]=*(arg);
+                    arg++;
                 }
             }else{
                 break;
@@ -410,7 +415,7 @@ int execute_ast(AST_node* ast){
         }
         flag[j]='\0';
 
-        if(j>2 && flag[2]!='\0'){
+        if(j>=2 && flag[1]!='\0'){
             cmd_arr[i++] = strdup(flag);
         }
         free(flag);
@@ -440,7 +445,7 @@ int execute_ast(AST_node* ast){
 }
 
 int exec_cmd(int size, char*** cmd_arr){
-    if(size<=0 || (*cmd_arr)[0] == NULL || (*cmd_arr) == NULL) return 1;
+    if(size<=0 || (*cmd_arr) == NULL || (*cmd_arr)[0] == NULL) return 1;
 
     cmd_func* ptr = cmd_func_arr;
     
