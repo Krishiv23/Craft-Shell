@@ -119,6 +119,7 @@ AST_node* parse_cmd(char*** tokens);
 AST_node* parse_arg(char*** tokens);
 int execute_ast(AST_node* ast);
 int exec_cmd(int size, char*** cmd_arr);
+int exec_connetor(AST_node* node);
 void free_ast(AST_node* ast);
 //void print_ast(AST_node* ast);
 
@@ -141,7 +142,6 @@ int main(int argc, char** argv)
 
     AST_node* ast=parse_cmd_line(&tokens);
     int stat = execute_ast(ast);
-    if(stat==0) printf("Command executed succesfully\n");
     //print_ast(ast);
 
     exit_stat=stat;
@@ -343,7 +343,7 @@ AST_node* parse_redirect(char*** tokens){
     current_token++;
 
     if(current_token>=token_count){
-        perror("Syntax Error: Expected destination\n");
+        fprintf(stderr, "Syntax Error: Expected destination\n");
         return NULL;
     }
     char* destin=strdup((*tokens)[current_token]);
@@ -367,7 +367,7 @@ AST_node* parse_connector(AST_node* left, char*** tokens){
             type=TOK_PIPE;
         }else if(strcmp(op, ";")==0){
             type=TOK_SEQ;
-        }else if(strcmp(op, "||")==0 || (strcmp(op, "&&")==0)){
+        }else if(strcmp(op, "||")==0 || strcmp(op, "&&")==0){
             type=TOK_LOGIC;
         }
 
@@ -428,7 +428,6 @@ int execute_ast(AST_node* ast){
         cmd_arr[i]=NULL;
 
         if(exec_cmd(i, &cmd_arr)>0){
-            fprintf(stderr, "%s\n", "Command execution failed");
             for(int k=0; k<i; k++) free(cmd_arr[k]);
             free(cmd_arr);
             return 1;
@@ -436,6 +435,8 @@ int execute_ast(AST_node* ast){
 
         for(int k=0; k<i; k++) free(cmd_arr[k]);
         free(cmd_arr);
+    }else if(type==TOK_LOGIC || type==TOK_SEQ){
+        exec_connetor(ast);
     }else{
         fprintf(stderr, "%s\n", "Unknown Command");
         return 1;
@@ -455,8 +456,29 @@ int exec_cmd(int size, char*** cmd_arr){
         }
     }
 
-    perror("Command not found\n");
+    fprintf(stderr, "Command not found\n");
     return 1;
+}
+
+int exec_connetor(AST_node* node){
+    AST_node* left = node->nodes.connector.left;
+    AST_node* right = node->nodes.connector.right;
+    int stat;
+        
+    if(strcmp(node->nodes.connector.op, ";")==0){
+        execute_ast(left);
+        execute_ast(right);
+    }else if(strcmp(node->nodes.connector.op, "||")==0){
+        stat = execute_ast(left);
+        if(stat==1)
+            if(execute_ast(right)==1) return 1;
+    }else if(strcmp(node->nodes.connector.op, "&&")==0){
+        stat = execute_ast(left);
+        if(stat==0) 
+            if(execute_ast(right)==1) return 1;
+    }
+
+    return 0;
 }
 
 void free_ast(AST_node* ast){
