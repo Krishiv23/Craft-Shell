@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "buildins.h"
 #include "prompt.h"
@@ -402,6 +404,10 @@ int execute_ast(AST_node* ast){
         while(temp){
             char* arg = temp->nodes.argument.arg;
             if(*arg == '-'){
+                if(strcmp(cmd_arr[0],"cd")==0){
+                    cmd_arr[i++]=strdup(arg);
+                    break;
+                }
                 arg++;
                 while((*arg)!='\0'){
                     flag[j++]=*(arg);
@@ -418,6 +424,7 @@ int execute_ast(AST_node* ast){
         if(j>=2 && flag[1]!='\0'){
             cmd_arr[i++] = strdup(flag);
         }
+
         free(flag);
         flag=NULL;
 
@@ -456,8 +463,27 @@ int exec_cmd(int size, char*** cmd_arr){
         }
     }
 
-    fprintf(stderr, "Command not found\n");
-    return 1;
+    int status;
+    pid_t pid=fork();
+    if(pid<0){
+        perror("fork");
+        _exit(1);
+    }
+
+    if(pid==0){
+        if(execvp((*cmd_arr)[0], (*cmd_arr))==-1){
+            perror((*cmd_arr)[0]);
+            return 1;
+        }
+    }
+
+    pid = waitpid(pid, &status, 0);
+    if(WIFEXITED(status) && WEXITSTATUS(status)==127){
+        fprintf(stderr, "Command not found\n");
+        return 1;
+    }
+
+    return 0;
 }
 
 int exec_connetor(AST_node* node){
