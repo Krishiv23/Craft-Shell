@@ -2,8 +2,9 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
-#include <stdlib.h>
+#include <fcntl.h>
 #include <linux/limits.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -27,12 +28,13 @@ int bi_cd(int argc, char** argv){
     if(argv[1]==NULL && argc<=2){
         strcpy(path, getenv("HOME"));
         if(*path == 0){ 
-            fprintf(stderr,"Home is not set");
+            fprintf(stderr,"Home is not set\n");
             return 1;
         }
     }else if(strcmp(argv[1], "-")==0){
+        printf("%s\n", last_dir);
         if(*last_dir==0){
-            fprintf(stderr, "No previous directory");
+            fprintf(stderr, "No previous directory\n");
             return 1;
         }
         strcpy(path, last_dir);
@@ -41,7 +43,7 @@ int bi_cd(int argc, char** argv){
             if(argv[1][1]=='/' || argv[1][1]=='\0'){
                 char* home=getenv("HOME");
                 if(!home){
-                    fprintf(stderr,"Home is not set");
+                    fprintf(stderr,"Home is not set\n");
                     return 1;
                 }
 
@@ -54,7 +56,7 @@ int bi_cd(int argc, char** argv){
                 snprintf(path, sizeof(path), "%s%s", cur_dir, ((argv[1])+1));
             }
         }else{
-            fprintf(stderr, "cd: %s","no such file or directory");
+            fprintf(stderr, "cd: no such file or directory --%s\n", argv[1]);
             return 1;
         }
     }
@@ -121,6 +123,11 @@ int bi_ls(int argc, char** argv){
             strcpy(path, argv[i]);
         }
     }
+
+    if(*flag!=0 && strcmp(flag, "-a")!=0){
+        fprintf(stderr, "Invalid option -%s\n", flag);
+        return 1;
+    }
     
     if(*path != 0){
         dir=opendir(path);
@@ -158,12 +165,114 @@ int bi_ls(int argc, char** argv){
     return 0;
 }
 
+int bi_new(int argc, char** argv){
+    if(argc==1){
+        fprintf(stderr, "Too few arguments\n");
+        return 1;
+    }
+    char path[PATH_MAX]={0};
+    int fd=-1, u=6, g=4, o=4;
+
+    for(int i=1; i<argc; ++i){
+        if(argv[i][0]=='-'){
+            for(int j=1; j<strlen(argv[i]); ++j){
+                switch(argv[i][j]){
+                    case 'u':
+                        if(argv[i][j+1]!='\0' && isdigit((unsigned char)argv[i][j+1])){
+                            if(strchr("01234567", argv[i][++j])){
+                                u = argv[i][j]-'0';
+                            }else{
+                                fprintf(stderr, "Invalid Permission -- %c", argv[i][j]);
+                                return 1;
+                            }
+                        }
+                    break;
+                    case 'g':
+                        if(argv[i][j+1]!='\0' && isdigit((unsigned char)argv[i][j+1])){
+                            if(strchr("01234567", argv[i][++j])){
+                                g = argv[i][j]-'0';
+                            }else{
+                                fprintf(stderr, "Invalid Permission-- %c", argv[i][j]);
+                                return 1;
+                            }
+                        }
+                    break;
+                    case 'o':
+                        if(argv[i][j+1]!='\0' && isdigit((unsigned char)argv[i][j+1])){
+                            if(strchr("01234567", argv[i][++j])){
+                                o = argv[i][j]-'0';
+                            }else{
+                                fprintf(stderr, "Invalid Permission-- %c", argv[i][j]);
+                                return 1;
+                            }
+                        }
+                    break;
+                    default:
+                        fprintf(stderr, "Invalid Option %s", argv[i]);
+                        return 1;
+                }
+            }
+        }else{
+            strcpy(path, argv[i]);
+        }
+    }
+
+    if(*path != 0)
+    fd = open(path, O_RDWR | O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+
+    if(fd<0){
+        perror("Error opening file\n");
+        return 1;
+    }
+
+    struct stat fs;
+    if(stat(path, &fs)<0){
+        perror("stat");
+        close(fd);
+        return 1;
+    }
+
+    mode_t new_mode = fs.st_mode & ~(S_IRWXU | S_IRWXG | S_IRWXO);
+
+    if(u & 4)
+        new_mode |= S_IRUSR;
+    if(u & 2)
+        new_mode |= S_IWUSR;
+    if(u & 1)
+        new_mode |= S_IXUSR;
+
+    if(g & 4)  
+        new_mode |= S_IRGRP;
+    if(g & 2)
+        new_mode |= S_IWGRP;
+    if(g & 1)
+        new_mode |= S_IXGRP;
+
+    if(o & 4) new_mode |= S_IROTH;
+    if(o & 2) new_mode |= S_IWOTH;
+    if(o & 1) new_mode |= S_IXOTH;
+
+    if(chmod(path, new_mode)<0){
+        perror("Error setting  permission");
+        close(fd);
+        return 1;
+    }
+
+    if(close(fd)!=0){
+        fprintf(stderr, "Error closing file\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 cmd_func cmd_func_arr[] = {
     {"cd", bi_cd},
     {"echo", bi_echo},
     {"exit", bi_exit},
     {"pwd", bi_pwd},
     {"ls", bi_ls},
+    {"new", bi_new},
     {NULL, NULL}
 };
 
