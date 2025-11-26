@@ -266,6 +266,39 @@ int bi_new(int argc, char** argv){
     return 0;
 }
 
+int bi_cat(int argc, char** argv){
+    char buffer[2048];
+    int fd, count;
+   
+    for(int i=1; i<argc; i++){
+         if(strcmp(argv[i],"-")==0 || argv[i]==NULL){
+            fd = STDIN_FILENO;
+        }else{
+            fd = open(argv[i], O_RDONLY, 0);
+            if(fd<0){
+                perror("open");
+                return 1;
+            }
+        }
+
+        while((count=read(fd, buffer, sizeof(buffer)))>0){
+            if(write(STDOUT_FILENO, buffer, count) != count){
+                perror("write");
+                if(fd>2) close(fd);
+                return 1;
+            }
+        }
+        if(count<0){
+            perror("read");
+            if(fd>2) close(fd);
+            return 1;
+        }
+        if(fd>2) close(fd);
+    }
+
+    return 0;
+}
+
 cmd_func cmd_func_arr[] = {
     {"cd", bi_cd},
     {"echo", bi_echo},
@@ -273,6 +306,7 @@ cmd_func cmd_func_arr[] = {
     {"pwd", bi_pwd},
     {"ls", bi_ls},
     {"new", bi_new},
+    {"cat", bi_cat},
     {NULL, NULL}
 };
 
