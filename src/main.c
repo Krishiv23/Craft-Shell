@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <linux/limits.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -27,8 +28,8 @@ void prompt(){
     gethostname(hostname, sizeof(hostname));
     getcwd(path, sizeof(path));
 
-    printf(YELLO"%s@",username);
-    printf(BLUE"%s:~%s"BLUE, hostname,path);
+    printf(WHITE"%s@"RESET,username);
+    printf(CYAN"%s:~%s"RESET, hostname,path);
     printf(BOLD"$ ");
     printf(RESET);
 }
@@ -120,7 +121,7 @@ AST_node* parse_sim_cmd(char*** tokens);
 AST_node* parse_cmd(char*** tokens);
 AST_node* parse_arg(char*** tokens);
 int execute_ast(AST_node* ast);
-int exec_cmd(int size, char*** cmd_arr);
+int exec_cmd(int size, char*** cmd_arr, AST_node* redir);
 int exec_connetor(AST_node* node);
 void free_ast(AST_node* ast);
 //void print_ast(AST_node* ast);
@@ -273,7 +274,7 @@ bool is_connector(char* type){
 
 bool is_redirect(char* type){
     if(type == NULL) return false;
-    if(strcmp(type, ">>")==0 || strcmp(type, ">")==0){
+    if(strcmp(type, "<")==0 || strcmp(type, ">")==0 || strcmp(type, ">>")==0){
         return true;
     }
 
@@ -434,7 +435,7 @@ int execute_ast(AST_node* ast){
         }
         cmd_arr[i]=NULL;
 
-        if(exec_cmd(i, &cmd_arr)>0){
+        if(exec_cmd(i, &cmd_arr, ast->nodes.command.redirect)>0){
             for(int k=0; k<i; k++) free(cmd_arr[k]);
             free(cmd_arr);
             return 1;
@@ -452,18 +453,103 @@ int execute_ast(AST_node* ast){
     return 0;
 }
 
-int exec_cmd(int size, char*** cmd_arr){
+int exec_cmd(int size, char*** cmd_arr, AST_node* redir){
     if(size<=0 || (*cmd_arr) == NULL || (*cmd_arr)[0] == NULL) return 1;
 
     cmd_func* ptr = cmd_func_arr;
     
     for(int i=0; i<total_buildins && ptr[i].cmd_name != NULL; ++i){
+        int return_val;
+        int s_out=-1;
+        int s_in=-1;
         if(strcmp((*cmd_arr)[0], ptr[i].cmd_name) == 0){
-            return ptr[i].cmd_func(size, (*cmd_arr));
+            if(redir && redir->type==TOK_REDIR){
+                int fd;
+                char* destin = redir->nodes.redirect.destination;
+                char* type = redir->nodes.redirect.type;
+
+                if(strcmp(type, "<")==0){
+                    s_in = dup(STDIN_FILENO);
+                    if(s_in < 0){
+                        perror("dup stdin");
+                        return 1;
+                    }
+
+                    fd=open(destin, O_RDONLY, 0644);
+                    if(fd<0){
+                        perror("open input");
+                        return 1;
+                    }
+
+                    if(dup2(fd, STDIN_FILENO)<0){
+                        perror("dup2 stdin");
+                        close(s_in);
+                        close(fd);
+                        return 1;
+                    }
+                    close(fd);
+
+                }else if(strcmp(type, ">")==0){
+                    s_out = dup(STDOUT_FILENO);
+                    if(s_out < 0){
+                        perror("dup stdout");
+                        return 1;
+                    }
+
+                    fd = open(destin, O_CREAT | O_RDWR | O_TRUNC, 0644);
+                    if(fd<0){
+                        perror("open output file");
+                        return 1;
+                    }
+
+                    if(dup2(fd, STDOUT_FILENO)<0){
+                        perror("dup2 stdout");
+                        close(fd);
+                        close(s_out);
+                        return 1;
+                    }
+
+                    close(fd);
+                }else if(strcmp(type, ">>")==0){
+                    s_out = dup(STDOUT_FILENO);
+                    if(s_out<0){
+                        perror("dup stdout");
+                        return 1;
+                    }
+
+                    fd = open(destin, O_CREAT | O_RDWR | O_APPEND, 0644);
+                    if(fd<0){
+                        perror("open output file");
+                        return 1;
+                    }
+
+                    if(dup2(fd, STDOUT_FILENO)<0){
+                        perror("dup2 stdout");
+                        close(fd);
+                        close(s_out);
+                        return 1;
+                    }
+
+                    close(fd);
+                }
+            }
+            
+            return_val = ptr[i].cmd_func(size, (*cmd_arr));
+
+            //Restoring fds
+            if(s_in!=-1){
+                dup2(s_in, STDIN_FILENO);
+                close(s_in);
+            }
+            if(s_out!=-1){
+                dup2(s_out, STDOUT_FILENO);
+                close(s_out);
+            }
+
+            return return_val;
         }
     }
 
-    int status;
     pid_t pid=fork();
     if(pid<0){
         perror("fork");
@@ -471,12 +557,46 @@ int exec_cmd(int size, char*** cmd_arr){
     }
 
     if(pid==0){
+        if(redir && redir->type==TOK_REDIR){
+            int fd;
+            char* destin = redir->nodes.redirect.destination;
+            char* type = redir->nodes.redirect.type;
+
+            if(strcmp(type, "<")==0){
+                fd = open(destin, O_RDONLY, 0644);
+                if(fd<0){
+                    perror("open");
+                    _exit(1);
+                }
+
+                dup2(fd, STDIN_FILENO);
+                close(fd);
+            }else if(strcmp(type, ">")==0){
+                fd = open(destin, O_RDWR | O_CREAT | O_TRUNC, 0644);
+                if(fd<0){
+                    perror("open");
+                    _exit(1);
+                }
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
+            }else if(strcmp(type, ">>")==0){
+                fd = open(destin, O_RDWR | O_CREAT | O_APPEND, 0644);
+                if(fd<1){
+                    perror("open");
+                    _exit(1);
+                }
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
+            }
+        }
+
         if(execvp((*cmd_arr)[0], (*cmd_arr))==-1){
             perror((*cmd_arr)[0]);
             return 1;
         }
     }
 
+    int status;
     pid = waitpid(pid, &status, 0);
     if(WIFEXITED(status) && WEXITSTATUS(status)==127){
         fprintf(stderr, "Command not found\n");
