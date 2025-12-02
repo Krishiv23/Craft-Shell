@@ -73,9 +73,8 @@ int bi_exit(int argc, char** argv){
     }
 
     if(argv[1]!=NULL){
-        if(isdigit(argv[1][0]-'0')){
-            exit_stat = argv[1][0]-'0';
-            exit(exit_stat);
+        if(isdigit((unsigned char)argv[1][0])){
+            exit_stat = atoi(argv[1]);
         }
     }
 
@@ -290,10 +289,20 @@ int bi_cat(int argc, char** argv){
     return 0;
 }
 
+int bi_help(int UNUSED argc, char** UNUSED argv){
+    cmd_func* ptr = cmd_func_arr;
+    fprintf(stdout, "Available built-in commands:\n");
+    for(int i=0; i<total_buildins && ptr[i].cmd_name != NULL; ++i){
+        fprintf(stdout, "\t%s\n", ptr[i].cmd_name);
+    }
+    return 0;
+}
+
 cmd_func cmd_func_arr[] = {
     {"cd", bi_cd},
     {"echo", bi_echo},
     {"exit", bi_exit},
+    {"help", bi_help},
     {"pwd", bi_pwd},
     {"ls", bi_ls},
     {"new", bi_new},
