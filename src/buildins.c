@@ -153,102 +153,78 @@ int bi_ls(int argc, char** argv){
     return 0;
 }
 
-int bi_new(int argc, char** argv){
-    if(argc==1){
+int bi_new(int argc, char **argv) {
+    if (argc == 1) {
         fprintf(stderr, "Too few arguments\n");
         return 1;
     }
-    char path[PATH_MAX]={0};
-    int fd=-1, u=6, g=4, o=4;
 
-    for(int i=1; i<argc; ++i){
-        if(argv[i][0]=='-'){
-            int len = strlen(argv[i]);
-            for(int j=1; j<len; ++j){
-                switch(argv[i][j]){
-                    case 'u':
-                        if(argv[i][j+1]!='\0' && isdigit((unsigned char)argv[i][j+1])){
-                            if(strchr("01234567", argv[i][++j])){
-                                u = argv[i][j]-'0';
-                            }else{
-                                fprintf(stderr, "Invalid Permission -- %c", argv[i][j]);
-                                return 1;
-                            }
-                        }
-                    break;
-                    case 'g':
-                        if(argv[i][j+1]!='\0' && isdigit((unsigned char)argv[i][j+1])){
-                            if(strchr("01234567", argv[i][++j])){
-                                g = argv[i][j]-'0';
-                            }else{
-                                fprintf(stderr, "Invalid Permission-- %c", argv[i][j]);
-                                return 1;
-                            }
-                        }
-                    break;
-                    case 'o':
-                        if(argv[i][j+1]!='\0' && isdigit((unsigned char)argv[i][j+1])){
-                            if(strchr("01234567", argv[i][++j])){
-                                o = argv[i][j]-'0';
-                            }else{
-                                fprintf(stderr, "Invalid Permission-- %c", argv[i][j]);
-                                return 1;
-                            }
-                        }
-                    break;
+    char path[PATH_MAX] = {0};
+    int u = 6, g = 4, o = 4;
+    int fd = -1;
+
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i][0] == '-') {
+            int len = (int)strlen(argv[i]);
+            for (int j = 1; j < len; ++j) {
+                if (argv[i][j + 1] == '\0' || !isdigit((unsigned char)argv[i][j + 1])) {
+                    fprintf(stderr, "Invalid option format: %s\n", argv[i]);
+                    return 1;
+                }
+
+                int val = argv[i][++j] - '0';
+                if (val < 0 || val > 7) {
+                    fprintf(stderr, "Invalid permission value: %d\n", val);
+                    return 1;
+                }
+
+                switch (argv[i][j - 1]) {
+                    case 'u': u = val; break;
+                    case 'g': g = val; break;
+                    case 'o': o = val; break;
                     default:
-                        fprintf(stderr, "Invalid Option %s", argv[i]);
+                        fprintf(stderr, "Invalid option: %s\n", argv[i]);
                         return 1;
                 }
             }
-        }else{
-            strcpy(path, argv[i]);
+        } else {
+            if (*path != '\0') {
+                fprintf(stderr, "Too many file arguments\n");
+                return 1;
+            }
+            if (snprintf(path, sizeof(path), "%s", argv[i]) >= (int)sizeof(path)) {
+                fprintf(stderr, "Path too long\n");
+                return 1;
+            }
         }
     }
 
-    if(*path != 0)
-    fd = open(path, O_RDWR | O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-
-    if(fd<0){
-        perror("Error opening file\n");
+    if (*path == '\0') {
+        fprintf(stderr, "No file path provided\n");
         return 1;
     }
 
-    struct stat fs;
-    if(stat(path, &fs)<0){
-        perror("stat");
-        close(fd);
+    mode_t mode = 0;
+    if (u & 4) mode |= S_IRUSR;
+    if (u & 2) mode |= S_IWUSR;
+    if (u & 1) mode |= S_IXUSR;
+
+    if (g & 4) mode |= S_IRGRP;
+    if (g & 2) mode |= S_IWGRP;
+    if (g & 1) mode |= S_IXGRP;
+
+    if (o & 4) mode |= S_IROTH;
+    if (o & 2) mode |= S_IWOTH;
+    if (o & 1) mode |= S_IXOTH;
+
+    fd = open(path, O_CREAT | O_RDWR, mode);
+    if (fd < 0) {
+        perror("open");
         return 1;
     }
 
-    mode_t new_mode = fs.st_mode & ~(S_IRWXU | S_IRWXG | S_IRWXO);
-
-    if(u & 4)
-        new_mode |= S_IRUSR;
-    if(u & 2)
-        new_mode |= S_IWUSR;
-    if(u & 1)
-        new_mode |= S_IXUSR;
-
-    if(g & 4)  
-        new_mode |= S_IRGRP;
-    if(g & 2)
-        new_mode |= S_IWGRP;
-    if(g & 1)
-        new_mode |= S_IXGRP;
-
-    if(o & 4) new_mode |= S_IROTH;
-    if(o & 2) new_mode |= S_IWOTH;
-    if(o & 1) new_mode |= S_IXOTH;
-
-    if(chmod(path, new_mode)<0){
-        perror("Error setting  permission");
-        close(fd);
-        return 1;
-    }
-
-    if(close(fd)!=0){
-        fprintf(stderr, "Error closing file\n");
+    if (close(fd) != 0) {
+        perror("close");
         return 1;
     }
 
